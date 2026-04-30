@@ -1,4 +1,6 @@
 VERSION := 1.4.0
+IMAGE     := amazonlinux:2023
+WORKSPACE := /fck-nat
 
 export AWS_MAX_ATTEMPTS=120
 export AWS_POLL_DELAY_SECONDS=15
@@ -30,3 +32,15 @@ all-amis: al2023-ami
 
 publish: regions_file = -var-file="packer/fck-nat-public-all-regions.pkrvars.hcl"
 publish: all-amis
+
+package-rpm-container:
+	docker run --rm \
+	  -v "$(CURDIR):$(WORKSPACE)" \
+	  -w $(WORKSPACE) \
+	  $(IMAGE) \
+	  bash -c " \
+			dnf install -y make rpm-build ruby rubygems rubygem-json --setopt=install_weak_deps=False && \
+			gem install fpm --no-document && \
+			cd $(WORKSPACE) && \
+			make package \
+	  "
