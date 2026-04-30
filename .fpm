@@ -10,3 +10,4 @@
 
 service/fck-nat.sh=/opt/fck-nat/fck-nat.sh
 service/fck-nat.service=/etc/systemd/system/fck-nat.service
+service/aws-utils.sh=/usr/local/lib/aws-utils.sh
