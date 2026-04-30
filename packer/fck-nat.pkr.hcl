@@ -86,7 +86,7 @@ locals {
 
   launch_block_device_mapping = {
     device_name           = "/dev/xvda"
-    volume_size           = 4
+    volume_size           = 2
     delete_on_termination = true
   }
 
@@ -103,7 +103,7 @@ locals {
 }
 
 source "amazon-ebs" "fck-nat" {
-  ami_name                  = "fck-nat-${var.flavor}-${var.virtualization_type}-${var.version}-${formatdate("YYYYMMDD", timestamp())}-${var.architecture}-ebs"
+  ami_name                  = "cheap-nat-${var.flavor}-${var.virtualization_type}-${var.version}-${formatdate("YYYYMMDD", timestamp())}-${var.architecture}-ebs"
   ami_virtualization_type   = local.common_source.ami_virtualization_type
   ami_regions               = local.common_source.ami_regions
   ami_users                 = local.common_source.ami_users
@@ -217,6 +217,52 @@ build {
       "sudo dnf install -y kpatch-runtime",
       "sudo dnf update kpatch-runtime",
       "sudo systemctl enable kpatch.service && sudo systemctl start kpatch.service",
+    ]
+  }
+
+  provisioner "shell" {
+    inline = [
+      # install cronie to run lifecycle.sh on crontab
+      "sudo dnf install -y cronie",
+      "sudo systemctl enable crond",
+      "sudo systemctl start crond",
+      # disable fck-nat and let cloud-init start it
+      "sudo systemctl disable fck-nat",
+      # disable unnecessary services
+      "sudo systemctl disable update-motd.service",
+      "sudo systemctl mask update-motd.service",
+      "sudo systemctl mask systemd-homed.service",
+      "sudo systemctl mask systemd-userdbd.service systemd-userdbd.socket",
+      "sudo systemctl mask getty@tty1.service",
+      # systemd-boot-update checks for bootloader updates. on al2023 it's typically a no-op but still takes ~10s.
+      "sudo systemctl mask systemd-boot-update.service",
+      # disable package upgrades on boot (can take around 10 minutes is small instances)
+      "sudo sed -i '/package-update-upgrade-install/d' /etc/cloud/cloud.cfg"
+    ]
+  }
+
+  provisioner "shell" {
+    inline = [
+      "sudo dnf autoremove -y",
+      "sudo dnf clean all",
+      "sudo rm -rf /var/cache/dnf",
+      "sudo rm -rf /var/lib/dnf/history",
+      "sudo rm -rf /var/lib/dnf/repos",
+      "sudo find /var/log -type f -exec truncate -s 0 {} \\;",
+      "sudo journalctl --rotate",
+      "sudo journalctl --vacuum-time=1s",
+      "sudo rm -rf /usr/share/doc",
+      "sudo rm -rf /usr/share/man",
+      "sudo rm -rf /usr/share/info",
+      "sudo rm -f /root/.bash_history",
+      "sudo rm -f /home/ec2-user/.bash_history",
+      "sudo rm -f /home/ec2-user/.ssh/authorized_keys",
+      "sudo rm -rf /tmp/*",
+      "sudo rm -rf /var/tmp/*",
+      # improve ami snapshot deduplication
+      "sudo dd if=/dev/zero of=/zero.fill bs=1M status=progress || true",
+      "sudo rm /zero.fill",
+      "sudo sync"
     ]
   }
 }
